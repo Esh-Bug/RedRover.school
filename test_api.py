@@ -22,7 +22,7 @@ def auth_token():
 
 
 @pytest.fixture(scope='module')
-def booking_id():
+def fixture_payload_with_id():
     payload = {
         "firstname": "Jim",
         "lastname": "Brown",
@@ -34,9 +34,11 @@ def booking_id():
         "additionalneeds": "Breakfast"
     }
     response = requests.post(url=BASE_URL, json=payload)
+
     assert response.status_code == STATUS_OK
-    booking_id = response.json()['bookingid']
-    yield booking_id
+    payload['bookingid'] = response.json()['bookingid']
+
+    yield payload
 
 
 def test_get_all_bookings():
@@ -48,16 +50,15 @@ def test_get_all_bookings():
     assert header_keep_alive in response.headers
 
 
-def test_booking_with_id():
-    response = requests.get(f"{BASE_URL}/1")
-    response.data = response.json()
+def test_booking_with_id(fixture_payload_with_id):
+    response = requests.get(f'{BASE_URL}/{fixture_payload_with_id["bookingid"]}')
     expected_keys = ['firstname', 'lastname', 'totalprice', 'depositpaid', 'bookingdates']
     for key in expected_keys:
-        assert key in response.data.keys()
+        assert key in response.json().keys()
 
 
-def test_create_booking(booking_id):  # передаем фикстуру в функцию
-    response = requests.get(f'{BASE_URL}/{booking_id}')
+def test_get_booking_by_id(fixture_payload_with_id):
+    response = requests.get(f'{BASE_URL}/{fixture_payload_with_id["bookingid"]}')
     assert response.status_code == STATUS_OK
     assert response.json()['firstname'] == 'Jim'
 
@@ -67,8 +68,8 @@ def test_user_autorization(auth_token):
     assert response.status_code == STATUS_OK
 
 
-def test_update_booking(booking_id, auth_token):
-    payload = {
+def test_update_booking(fixture_payload_with_id, auth_token):
+    update_payload = {
         "firstname": "Jim",
         "lastname": "Brown",
         "totalprice": 222,
@@ -79,26 +80,31 @@ def test_update_booking(booking_id, auth_token):
         "additionalneeds": "Lunch"
     }
     headers = {'Cookie': f'token={auth_token}'}
-    response = requests.put(url=f'{BASE_URL}/{booking_id}', json=payload, headers=headers)
+    response = requests.put(
+        url=f'{BASE_URL}/{fixture_payload_with_id["bookingid"]}', json=update_payload, headers=headers
+    )
     assert response.status_code == STATUS_OK
-    assert response.json()['totalprice'] == payload['totalprice']
-    assert response.json()['additionalneeds'] == payload['additionalneeds']
+    content = response.json()
+    for key in update_payload.keys(): assert update_payload[key] == content[key]
 
 
-def test_delete_booking(booking_id, auth_token):
-    headers = {'Cookie': f'token={auth_token}'}
-    response = requests.delete(url=f'{BASE_URL}/{booking_id}', headers=headers)
-    assert response.status_code == 201
-    response_get = requests.get(f'{BASE_URL}/{booking_id}')
-    assert response_get.status_code == 404  # проверяем, что такого айди больше нет
-
-def test_patch_booking(booking_id, auth_token):
-    payload = {
+def test_patch_booking(fixture_payload_with_id, auth_token):
+    patch_payload = {
         "firstname": "James",
         "lastname": "White"
     }
     headers = {'Cookie': f'token={auth_token}'}
-    response = requests.patch(url=f'{BASE_URL}/{booking_id}', json=payload, headers=headers)
-    assert response.json()['firstname'] == payload['firstname']
-    assert response.json()['lastname'] == payload['lastname']
+    response = requests.patch(
+        url=f'{BASE_URL}/{fixture_payload_with_id["bookingid"]}', json=patch_payload, headers=headers
+    )
+    assert response.status_code == STATUS_OK
+    content = response.json()
+    for key in patch_payload.keys(): assert patch_payload[key] == content[key]
 
+
+def test_delete_booking(fixture_payload_with_id, auth_token):
+    headers = {'Cookie': f'token={auth_token}'}
+    response = requests.delete(url=f'{BASE_URL}/{fixture_payload_with_id["bookingid"]}', headers=headers)
+    assert response.status_code == 201
+    response_get = requests.get(f'{BASE_URL}/{fixture_payload_with_id["bookingid"]}')
+    assert response_get.status_code == 404  # проверяем, что такого айди больше нет
